@@ -1,0 +1,53 @@
+Invoice: 1051
+Date
+2/29/2016
+Terms
+Net 15
+PO Number
+Account #
+Bill To
+Property Address
+ABA Outreach
+ABA Outreach
+828 Wappoo Road
+828 Wappoo Road
+Charleston, SC 29405
+Charleston, SC 29405
+Date/Time
+Description
+Quantity
+Price
+Total
+2/29/2016
+Landscape Maintenance
+1.00
+268.44
+268.44
+-maintain lawn at proper height
+-weedeat/edge
+-blow
+-weed control/fertilization
+pick up trash/sticks/debris
+Subtotal:
+268.44
+Invoice Total:
+$268.44
+PAYMENT COUPON
+Riverside Landscape Services, LLC
+ABA Outreach
+6236 Hyde Park Road
+828 Wappoo Road
+Ravenel,SC 29470
+Charleston, SC 29405
+843-407-0954
+Terms
+Net 15
+Invoice #
+1051
+Account #
+Invoice Date
+2/29/2016
+PO Number
+Invoice Balance
+$268.44
+Amount Enclosed

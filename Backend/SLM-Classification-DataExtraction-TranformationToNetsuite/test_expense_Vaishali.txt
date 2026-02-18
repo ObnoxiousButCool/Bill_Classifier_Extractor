@@ -1,0 +1,34 @@
+Vaishali Express
+A Unit of Hotel Vaishali
+Unit No 16,2na Floor Food Court
+Amanora Mall,Hadapsar,Pune-411028
+Name:
+Date: 03/02/26
+Self Service
+13:49
+Cashier: biller
+Bill No.: 129088
+Token No.: 53
+Item
+Qty.
+Price Amount
+Onion Uttapa
+1 132.00 132.00
+Rice Plate
+1 165.00 165.00
+Sub
+297.00
+Total Qty: 2
+Total
+C-GST 2.5%
+7.43
+S-GST 2.5%
+7.43
+Round off
++0.14
+Grand Total
+312.00
+Pald via Other [UPI]
+GST NO : 27CWXPS7897E2Z7
+FSSAI NO :11524079000037
+! ! THANK YOU **** VISIT AGAIN ! !

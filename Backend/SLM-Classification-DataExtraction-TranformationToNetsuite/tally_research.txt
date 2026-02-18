@@ -1,0 +1,160 @@
+Tally ERP support XML import through its HTTP/XML interface.
+
+Structure of Tally XML:- Envelope → Header → Body → Voucher structure
+
+<ENVELOPE>
+    <HEADER>
+        <TALLYREQUEST>Import Data</TALLYREQUEST>
+    </HEADER>
+    <BODY>
+        <IMPORTDATA>
+            <REQUESTDESC>
+                <REPORTNAME>Vouchers</REPORTNAME>
+            </REQUESTDESC>
+            <REQUESTDATA>
+                <TALLYMESSAGE>
+                    <VOUCHER>
+                        ...
+                    </VOUCHER>
+                </TALLYMESSAGE>
+            </REQUESTDATA>
+        </IMPORTDATA>
+    </BODY>
+</ENVELOPE>
+
+
+1) Envelope:- Root element, mandatory
+2) Header:- Defines what you are sending
+3) Body(ImportData):- This tell Tally what type of data, what report, what object.
+
+For expense bill -> payment/ journal voucher
+For invoice -> purchase voucher
+
+Basic Vouvher structure in Tally XML
+
+<VOUCHER VCHTYPE="Purchase" ACTION="Create">
+    <DATE>20250814</DATE>
+    <VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>
+    <PARTYLEDGERNAME>John Synex Inc</PARTYLEDGERNAME>
+    <REFERENCE>INV09080012</REFERENCE>
+    <NARRATION>Imported via API</NARRATION>
+
+    <ALLLEDGERENTRIES.LIST>
+        <LEDGERNAME>Purchase Account</LEDGERNAME>
+        <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+        <AMOUNT>-9463.00</AMOUNT>
+    </ALLLEDGERENTRIES.LIST>
+
+    <ALLLEDGERENTRIES.LIST>
+        <LEDGERNAME>John Synex Inc</LEDGERNAME>
+        <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+        <AMOUNT>10243.70</AMOUNT>
+    </ALLLEDGERENTRIES.LIST>
+
+</VOUCHER>
+
+
+So now for the different bills types that we are considering -> Envelope structure remains the same only the VOUCHER structure inside changes slightly depending on voucher type.   
+
+
+Key elements for vender invoice -> purchase voucher
+
+<VOUCHER VCHTYPE="Purchase" ACTION="Create">
+    <DATE>20090814</DATE>
+    <VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>
+    <PARTYLEDGERNAME>Vendor Name</PARTYLEDGERNAME>
+    <REFERENCE>Invoice No</REFERENCE>
+
+Expense bill -> payment voucher
+
+<VOUCHER VCHTYPE="Payment" ACTION="Create">
+    <DATE>20250814</DATE>
+    <VOUCHERTYPENAME>Payment</VOUCHERTYPENAME>
+    <NARRATION>Restaurant Expense</NARRATION>
+
+
+1) Purchase Voucher XML
+
+<VOUCHER VCHTYPE="Purchase" ACTION="Create" OBJVIEW="Invoice Voucher View">
+    <DATE>{{DATE_YYYYMMDD}}</DATE>
+    <VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>
+    <REFERENCE>{{INVOICE_NO}}</REFERENCE>
+    <PARTYLEDGERNAME>{{VENDOR_NAME}}</PARTYLEDGERNAME>
+    <NARRATION>Imported Invoice {{INVOICE_NO}}</NARRATION>
+
+    <!-- Purchase Ledger Entry -->
+    <ALLLEDGERENTRIES.LIST>
+        <LEDGERNAME>Purchase Account</LEDGERNAME>
+        <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+        <AMOUNT>-{{SUBTOTAL}}</AMOUNT>
+    </ALLLEDGERENTRIES.LIST>
+
+    <!-- GST Ledger Entry -->
+    <ALLLEDGERENTRIES.LIST>
+        <LEDGERNAME>Input GST</LEDGERNAME>
+        <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+        <AMOUNT>-{{GST_AMOUNT}}</AMOUNT>
+    </ALLLEDGERENTRIES.LIST>
+
+    <!-- Vendor Ledger Entry -->
+    <ALLLEDGERENTRIES.LIST>
+        <LEDGERNAME>{{VENDOR_NAME}}</LEDGERNAME>
+        <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+        <AMOUNT>{{TOTAL_AMOUNT}}</AMOUNT>
+    </ALLLEDGERENTRIES.LIST>
+
+</VOUCHER>
+
+** Dynamic fields marked with {{}}
+
+Mapping ->
+
+| JSON Field        | XML Field                    |
+| ----------------- | ---------------------------- |
+| "invoice no."     | REFERENCE                    |
+| "date"            | DATE (converted to YYYYMMDD) |
+| "bill to"         | PARTYLEDGERNAME              |
+| "sub total (usd)" | SUBTOTAL                     |
+| "sales tax (usd)" | GST_AMOUNT                   |
+| "total (usd)"     | TOTAL_AMOUNT                 |
+
+
+2) Payment voucher XML 
+
+<VOUCHER VCHTYPE="Payment" ACTION="Create">
+    <DATE>{{DATE_YYYYMMDD}}</DATE>
+    <VOUCHERTYPENAME>Payment</VOUCHERTYPENAME>
+    <PARTYLEDGERNAME>{{EMPLOYEE_NAME}}</PARTYLEDGERNAME>
+    <NARRATION>Expense Reimbursement - {{EXPENSE_TYPE}}</NARRATION>
+
+    <!-- Expense Ledger Entry -->
+    <ALLLEDGERENTRIES.LIST>
+        <LEDGERNAME>{{EXPENSE_LEDGER}}</LEDGERNAME>
+        <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+        <AMOUNT>-{{SUBTOTAL}}</AMOUNT>
+    </ALLLEDGERENTRIES.LIST>
+
+    <!-- GST Ledger Entry -->
+    <ALLLEDGERENTRIES.LIST>
+        <LEDGERNAME>Input GST</LEDGERNAME>
+        <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+        <AMOUNT>-{{GST_AMOUNT}}</AMOUNT>
+    </ALLLEDGERENTRIES.LIST>
+
+    <!-- Bank Ledger Entry -->
+    <ALLLEDGERENTRIES.LIST>
+        <LEDGERNAME>Bank Account</LEDGERNAME>
+        <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+        <AMOUNT>{{TOTAL_AMOUNT}}</AMOUNT>
+    </ALLLEDGERENTRIES.LIST>
+
+</VOUCHER>
+
+Mapping ->
+| JSON Field   | XML Field                                 |
+| ------------ | ----------------------------------------- |
+| subtotal     | SUBTOTAL                                  |
+| tax          | GST_AMOUNT                                |
+| total due    | TOTAL_AMOUNT                              |
+| billCategory | EXPENSE_LEDGER (e.g., Restaurant Expense) |
+

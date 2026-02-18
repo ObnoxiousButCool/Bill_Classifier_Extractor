@@ -1,0 +1,96 @@
+# =========================
+# GENERAL
+# =========================
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.swp
+
+# =========================
+# ENV FILES (ALL PROJECTS)
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# PYTHON (BACKEND)
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# =========================
+# NODE / FRONTEND
+# =========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# React / Vite / Next build
+.next/
+out/
+build/
+dist/
+.expo/
+.expo-shared/
+
+# Metro / React Native
+.metro-cache/
+
+# =========================
+# IDEs
+# =========================
+.vscode/
+.idea/
+*.iml
+
+# =========================
+# DATABASE
+# =========================
+*.sqlite3
+*.db
+
+# =========================
+# OCR / ML FILES
+# =========================
+*.pt
+*.pth
+*.onnx
+*.h5
+
+# =========================
+# UPLOADS / GENERATED FILES
+# =========================
+uploads/
+media/
+tmp/
+
+# =========================
+# LOG FILES
+# =========================
+logs/
+*.log

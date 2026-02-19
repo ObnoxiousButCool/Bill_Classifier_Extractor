@@ -8,10 +8,9 @@ import uuid
 import shutil
 import requests
 import cv2
-import numpy as np
 from pathlib import Path
 from PIL import Image
-from fastapi import FastAPI, File, UploadFile, HTTPException, Request, BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, Request, BackgroundTasks
 from paddleocr import PaddleOCR
 import pytesseract
 import uvicorn
@@ -24,15 +23,15 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 print(f"✅ Storage initialized at: {UPLOAD_DIR}")
 
 # -------------------------------------------------------------------
-# ⭐ CONFIG
+# CONFIG
 # -------------------------------------------------------------------
-OTHER_BACKEND_URL = "https://arcade-alan-tim-timothy.trycloudflare.com/process"
+OTHER_BACKEND_URL = "http://localhost:8000/process"
 
 # Teams
 TEAMS_APP_ID = config.TEAMS_APP_ID
 TEAMS_APP_PASSWORD = config.TEAMS_APP_PASSWORD
 
-# WhatsApp
+# WhatsApp (⚠ MUST BE PERMANENT TOKEN)
 WHATSAPP_ACCESS_TOKEN = config.WHATSAPP_ACCESS_TOKEN
 PHONE_NUMBER_ID = config.PHONE_NUMBER_ID
 VERIFY_TOKEN = config.VERIFY_TOKEN
@@ -69,7 +68,82 @@ def extract_text_from_image(image_path: Path):
 
 
 # -------------------------------------------------------------------
-# ⭐ SHARED OCR PIPELINE (BACKGROUND)
+# TEAMS TOKEN
+# -------------------------------------------------------------------
+def get_teams_token():
+    url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+
+    payload = {
+        "grant_type": "client_credentials",
+        "client_id": TEAMS_APP_ID,
+        "client_secret": TEAMS_APP_PASSWORD,
+        "scope": "https://api.botframework.com/.default"
+    }
+
+    r = requests.post(url, data=payload)
+    data = r.json()
+
+    if "access_token" not in data:
+        raise Exception(f"Teams token failed: {data}")
+
+    return data["access_token"]
+
+
+# -------------------------------------------------------------------
+# TEAMS SEND
+# -------------------------------------------------------------------
+def send_teams_message(
+        service_url,
+        conversation_id,
+        token,
+        message_text,
+        bot_id,
+        reply_to_id=None
+):
+    url = f"{service_url}/v3/conversations/{conversation_id}/activities"
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "type": "message",
+        "from": {"id": bot_id},
+        "text": message_text
+    }
+
+    if reply_to_id:
+        payload["replyToId"] = reply_to_id
+
+    r = requests.post(url, headers=headers, json=payload)
+    print("Teams send response:", r.status_code, r.text)
+
+
+# -------------------------------------------------------------------
+# WHATSAPP SEND
+# -------------------------------------------------------------------
+def send_whatsapp_message(to_number: str, message_text: str):
+    url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
+
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_number,
+        "type": "text",
+        "text": {"body": message_text}
+    }
+
+    r = requests.post(url, headers=headers, json=payload)
+    print("WhatsApp send response:", r.status_code, r.text)
+
+
+# -------------------------------------------------------------------
+# BACKGROUND PROCESSOR
 # -------------------------------------------------------------------
 def process_image_stream_background(file_stream, reply_ctx=None):
     try:
@@ -97,21 +171,21 @@ def process_image_stream_background(file_stream, reply_ctx=None):
         except Exception as e:
             print("Forwarding error:", e)
 
-        # ⭐ SEND COMPLETION MESSAGE IF NEEDED
+        # Send completion message
         if reply_ctx:
 
             if reply_ctx["type"] == "teams":
-
                 fresh_token = get_teams_token()
-
                 send_teams_message(
                     reply_ctx["service_url"],
                     reply_ctx["conversation_id"],
                     fresh_token,
-                    "✅ Processing complete! Please check the dashboard."
+                    "✅ Processing complete! Please check the dashboard.",
+                    reply_ctx["bot_id"],
+                    reply_ctx.get("reply_to_id")
                 )
-        
-            if reply_ctx["type"] == "whatsapp":
+
+            elif reply_ctx["type"] == "whatsapp":
                 send_whatsapp_message(
                     reply_ctx["from_number"],
                     "✅ Processing complete! Please check the dashboard."
@@ -122,98 +196,7 @@ def process_image_stream_background(file_stream, reply_ctx=None):
 
 
 # -------------------------------------------------------------------
-# ⭐ WHATSAPP SEND
-# -------------------------------------------------------------------
-def send_whatsapp_message(to_number: str, message_text: str):
-    url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
-
-    headers = {
-        "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to_number,
-        "type": "text",
-        "text": {"body": message_text}
-    }
-
-    requests.post(url, headers=headers, json=payload)
-
-
-# -------------------------------------------------------------------
-# ⭐ TEAMS TOKEN + SEND
-# -------------------------------------------------------------------
-def get_teams_token():
-    # url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-    url = "https://login.microsoftonline.com/7284c057-4078-4170-92c0-1bcb11c55269/oauth2/v2.0/token"
-    payload = {
-        "grant_type": "client_credentials",
-        "client_id": TEAMS_APP_ID,
-        "client_secret": TEAMS_APP_PASSWORD,
-        "scope": "https://api.botframework.com/.default"
-    }
-
-    r = requests.post(url, data=payload)
-
-    print("Teams token response:", r.text)
-
-    data = r.json()
-    # url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-
-    if "access_token" not in data:
-        raise Exception(f"Teams token failed: {data}")
-
-    return data["access_token"]
-  
-def send_teams_message(
-    service_url,
-    conversation_id,
-    token,
-    message_text,
-    bot_id,
-    reply_to_id=None
-):
-
-    if "access_token" not in data:
-        raise Exception(f"Teams token failed: {data}")
-
-    return data["access_token"]
-
-
-def send_teams_message(
-        service_url,
-        conversation_id,
-        token,
-        message_text,
-        bot_id,
-        reply_to_id=None
-):
-    url = f"{service_url}/v3/conversations/{conversation_id}/activities"
-
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "type": "message",
-        "from": {
-            "id": bot_id  # ⭐ MUST be recipient.id from incoming activity
-        },
-        "text": message_text
-    }
-
-    if reply_to_id:
-        payload["replyToId"] = reply_to_id
-
-
-    r = requests.post(url, headers=headers, json=payload)
-    print("Teams send response:", r.status_code, r.text)
-   
-# -------------------------------------------------------------------
-# ⭐ WHATSAPP VERIFY
+# WHATSAPP VERIFY
 # -------------------------------------------------------------------
 @app.get("/whatsapp/webhook")
 async def verify_whatsapp_webhook(request: Request):
@@ -225,26 +208,24 @@ async def verify_whatsapp_webhook(request: Request):
 
 
 # -------------------------------------------------------------------
-# FRONTEND 1 — WEB UI
-# -------------------------------------------------------------------
-@app.post("/upload")
-async def handle_upload(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
-    background_tasks.add_task(process_image_stream_background, file.file)
-    return {"status": "processing started"}
-
-
-# -------------------------------------------------------------------
-# ⭐ WHATSAPP WEBHOOK
+# WHATSAPP WEBHOOK
 # -------------------------------------------------------------------
 @app.post("/whatsapp/webhook")
 async def whatsapp_webhook(req: Request, background_tasks: BackgroundTasks):
-    data = await req.json()
-
     try:
-        message = data["entry"][0]["changes"][0]["value"]["messages"][0]
+        data = await req.json()
+        print("Incoming WhatsApp:", data)
 
-        if message["type"] != "image":
-            return {"status": "ignored"}
+        value = data["entry"][0]["changes"][0]["value"]
+
+        # Ignore status updates
+        if "messages" not in value:
+            return {"status": "no message event"}
+
+        message = value["messages"][0]
+
+        if message.get("type") != "image":
+            return {"status": "ignored (not image)"}
 
         from_number = message["from"]
 
@@ -253,14 +234,12 @@ async def whatsapp_webhook(req: Request, background_tasks: BackgroundTasks):
             "📄 Image received! Processing your bill..."
         )
 
-        media_id = message["image"]["id"]
+        # Use direct URL from webhook
+        media_url = message["image"].get("url")
+        if not media_url:
+            raise Exception("No media URL in webhook payload")
+
         headers = {"Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}"}
-
-        media_url = requests.get(
-            f"https://graph.facebook.com/v21.0/{media_id}",
-            headers=headers
-        ).json()["url"]
-
         img = requests.get(media_url, headers=headers, stream=True)
 
         background_tasks.add_task(
@@ -280,7 +259,7 @@ async def whatsapp_webhook(req: Request, background_tasks: BackgroundTasks):
 
 
 # -------------------------------------------------------------------
-# ⭐ TEAMS WEBHOOK
+# TEAMS WEBHOOK
 # -------------------------------------------------------------------
 @app.post("/teams/webhook")
 async def teams_webhook(req: Request, background_tasks: BackgroundTasks):
@@ -295,60 +274,43 @@ async def teams_webhook(req: Request, background_tasks: BackgroundTasks):
         if not attachments:
             return {"status": "no image"}
 
-        # ⭐ Works for BOTH Web Chat + Teams
         image_url = (
-                attachments[0].get("contentUrl")
-                or attachments[0].get("content", {}).get("downloadUrl")
+            attachments[0].get("contentUrl")
+            or attachments[0].get("content", {}).get("downloadUrl")
         )
+
+        if not image_url:
+            return {"status": "no image url"}
 
         service_url = data["serviceUrl"]
         conversation_id = data["conversation"]["id"]
         activity_id = data["id"]
         bot_id = data["recipient"]["id"]
 
-        # ⭐ ALWAYS get fresh token when sending
         token = get_teams_token()
 
-        # ----------------------------------------------------
-        # ✅ Immediate acknowledgement messages
-        # ----------------------------------------------------
-        # send_teams_message(
-        #     service_url,
-        #     conversation_id,
-        #     token,
-        #     "📄 Image received! Processing your bill...",
-        #     bot_id,
-        #     activity_id
-        # )
-
+        # Immediate acknowledgment
         send_teams_message(
             service_url,
             conversation_id,
             token,
-            "✅ Image submitted, please check the dashboard in some time to see the extracted data.",
+            "📄 Image received! Processing your bill...",
             bot_id,
             activity_id
         )
 
-        # ----------------------------------------------------
-        # ⭐ Download image using bot token
-        # ----------------------------------------------------
-        headers = {
-            "Authorization": f"Bearer {token}"
-        }
-
+        headers = {"Authorization": f"Bearer {token}"}
         img_response = requests.get(image_url, headers=headers, stream=True)
 
-        # ----------------------------------------------------
-        # ⭐ Background OCR processing
-        # ----------------------------------------------------
         background_tasks.add_task(
             process_image_stream_background,
             img_response.raw,
             {
                 "type": "teams",
                 "service_url": service_url,
-                "conversation_id": conversation_id
+                "conversation_id": conversation_id,
+                "bot_id": bot_id,
+                "reply_to_id": activity_id
             }
         )
 
@@ -359,8 +321,15 @@ async def teams_webhook(req: Request, background_tasks: BackgroundTasks):
         return {"status": "error"}
 
 
- 
+# -------------------------------------------------------------------
+# WEB UI UPLOAD
+# -------------------------------------------------------------------
+@app.post("/upload")
+async def handle_upload(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    background_tasks.add_task(process_image_stream_background, file.file)
+    return {"status": "processing started"}
+
+
 # -------------------------------------------------------------------
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
-

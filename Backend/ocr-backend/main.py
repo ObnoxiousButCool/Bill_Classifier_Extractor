@@ -11,6 +11,7 @@ import cv2
 from pathlib import Path
 from PIL import Image
 from fastapi import FastAPI, File, UploadFile, Request, BackgroundTasks
+from pydantic import BaseModel
 from paddleocr import PaddleOCR
 import pytesseract
 import uvicorn
@@ -347,6 +348,40 @@ def get_teams_token():
 async def handle_upload(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     background_tasks.add_task(process_image_stream_background, file.file)
     return {"status": "processing started"}
+
+# -------------------------------------------------------------------
+# WHATSAPP MANUAL SEND MODEL (POC)
+# -------------------------------------------------------------------
+class WhatsAppManualSend(BaseModel):
+    phone_number: str
+    message: str
+
+# -------------------------------------------------------------------
+# MANUAL WHATSAPP SEND API (POC ONLY)
+# -------------------------------------------------------------------
+@app.post("/send-whatsapp-text")
+async def send_whatsapp_text(payload: WhatsAppManualSend):
+    try:
+        print("Manual WhatsApp send request:", payload)
+
+        # Use your existing function (NO CHANGES)
+        send_whatsapp_message(
+            payload.phone_number,
+            payload.message
+        )
+
+        return {
+            "status": "success",
+            "sent_to": payload.phone_number,
+            "message": payload.message
+        }
+
+    except Exception as e:
+        print("Manual WhatsApp send error:", e)
+        return {
+            "status": "error",
+            "details": str(e)
+        }
 
 
 # -------------------------------------------------------------------

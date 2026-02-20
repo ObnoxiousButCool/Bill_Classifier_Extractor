@@ -45,26 +45,73 @@ _paddle_ocr = PaddleOCR(lang="en", use_textline_orientation=True)
 # -------------------------------------------------------------------
 # OCR FUNCTION
 # -------------------------------------------------------------------
-def extract_text_from_image(image_path: Path):
+def extract_text_from_image(image_path: Path, confidence_threshold: float = 0.5) -> str:
     img = cv2.imread(str(image_path))
-    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    if img is None: return ""
+    h, w, _ = img.shape
 
-    result = _paddle_ocr.ocr(img_rgb, cls=True)
+    result = _paddle_ocr.ocr(img, cls=True)
 
-    lines = []
-    if result and result[0]:
-        for line in result[0]:
-            text, score = line[1]
-            if score >= 0.5:
-                lines.append(text)
+    # Clean up memory
+    del img
+    gc.collect()
 
-    paddle_text = "\n".join(lines).strip()
+    if not result or not result[0]: return ""
 
-    if len(paddle_text) > 10:
-        return paddle_text
+    extracted_items = []
+    for line in result[0]:
+        box = line[0]
+        text = line[1][0]
+        score = line[1][1]
 
-    pil_img = Image.fromarray(img_rgb).convert("L")
-    return pytesseract.image_to_string(pil_img, config="--oem 3 --psm 6")
+        if score >= confidence_threshold:
+            # We use the average Y to find the row, but keep X precise
+            y_center = sum([p[1] for p in box]) / 4
+            x_min = min([p[0] for p in box])
+            extracted_items.append({'y': y_center, 'x': x_min, 'text': text})
+
+    # 1. Sort primarily by Y, secondarily by X
+    extracted_items.sort(key=lambda x: (x['y'], x['x']))
+
+    # 2. Group into rows with a strict but fair tolerance
+    rows = []
+    if extracted_items:
+        current_row = [extracted_items[0]]
+        # A 12-15 pixel tolerance is usually the "sweet spot" for 4GB RAM CPU OCR
+        row_tolerance = 12
+
+        for i in range(1, len(extracted_items)):
+            if abs(extracted_items[i]['y'] - current_row[-1]['y']) <= row_tolerance:
+                current_row.append(extracted_items[i])
+            else:
+                # Before finishing a row, sort it by X (left to right)
+                current_row.sort(key=lambda x: x['x'])
+                rows.append(current_row)
+                current_row = [extracted_items[i]]
+        current_row.sort(key=lambda x: x['x'])
+        rows.append(current_row)
+
+    # 3. Spatial Rendering
+    # Using a step of 8-9 pixels per character prevents text from overlapping
+    char_step = 9
+    max_chars = int(w / char_step) + 15
+    final_output = []
+
+    for row in rows:
+        line_canvas = [" "] * max_chars
+        for item in row:
+            char_pos = int(item['x'] / char_step)
+            if char_pos < max_chars:
+                text_val = item['text']
+                for i, char in enumerate(text_val):
+                    if char_pos + i < max_chars:
+                        # Only place character if the space is empty to avoid jumbling
+                        if line_canvas[char_pos + i] == " ":
+                            line_canvas[char_pos + i] = char
+
+        final_output.append("".join(line_canvas).rstrip())
+
+    return "\n".join(final_output)
 
 
 # -------------------------------------------------------------------

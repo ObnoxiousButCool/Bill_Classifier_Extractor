@@ -30,6 +30,7 @@ OTHER_BACKEND_URL = "http://localhost:8000/process"
 # Teams
 TEAMS_APP_ID = config.TEAMS_APP_ID
 TEAMS_APP_PASSWORD = config.TEAMS_APP_PASSWORD
+MICROSOFT_TENANT_ID = config.MICROSOFT_TENANT_ID
 
 # WhatsApp (⚠ MUST BE PERMANENT TOKEN)
 WHATSAPP_ACCESS_TOKEN = config.WHATSAPP_ACCESS_TOKEN
@@ -73,20 +74,21 @@ def extract_text_from_image(image_path: Path):
 def get_teams_token():
     url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 
-    payload = {
-        "grant_type": "client_credentials",
-        "client_id": TEAMS_APP_ID,
-        "client_secret": TEAMS_APP_PASSWORD,
-        "scope": "https://api.botframework.com/.default"
-    }
+    for row in rows:
+        line_canvas = [" "] * max_chars
+        for item in row:
+            char_pos = int(item['x'] / char_step)
+            if char_pos < max_chars:
+                text_val = item['text']
+                for i, char in enumerate(text_val):
+                    if char_pos + i < max_chars:
+                        # Only place character if the space is empty to avoid jumbling
+                        if line_canvas[char_pos + i] == " ":
+                            line_canvas[char_pos + i] = char
 
-    r = requests.post(url, data=payload)
-    data = r.json()
+        final_output.append("".join(line_canvas).rstrip())
 
-    if "access_token" not in data:
-        raise Exception(f"Teams token failed: {data}")
-
-    return data["access_token"]
+    return "\n".join(final_output)
 
 
 # -------------------------------------------------------------------
@@ -272,24 +274,22 @@ async def teams_webhook(req: Request, background_tasks: BackgroundTasks):
 
         attachments = data.get("attachments") or []
         if not attachments:
-            return {"status": "no image"}
+            return {"status": "no attachment"}
 
-        image_url = (
-            attachments[0].get("contentUrl")
-            or attachments[0].get("content", {}).get("downloadUrl")
-        )
+        attachment = attachments[0]
+        content_url = attachment.get("contentUrl")
 
-        if not image_url:
-            return {"status": "no image url"}
+        if not content_url:
+            return {"status": "no contentUrl"}
 
         service_url = data["serviceUrl"]
         conversation_id = data["conversation"]["id"]
         activity_id = data["id"]
         bot_id = data["recipient"]["id"]
 
+        # 🔹 SEND IMMEDIATE ACKNOWLEDGEMENT (like WhatsApp)
         token = get_teams_token()
 
-        # Immediate acknowledgment
         send_teams_message(
             service_url,
             conversation_id,
@@ -299,8 +299,9 @@ async def teams_webhook(req: Request, background_tasks: BackgroundTasks):
             activity_id
         )
 
+        # 🔹 Download image
         headers = {"Authorization": f"Bearer {token}"}
-        img_response = requests.get(image_url, headers=headers, stream=True)
+        img_response = requests.get(content_url, headers=headers, stream=True)
 
         background_tasks.add_task(
             process_image_stream_background,
@@ -320,6 +321,24 @@ async def teams_webhook(req: Request, background_tasks: BackgroundTasks):
         print("Teams webhook error:", e)
         return {"status": "error"}
 
+def get_teams_token():
+    url = f"https://login.microsoftonline.com/{MICROSOFT_TENANT_ID}/oauth2/v2.0/token"
+
+    payload = {
+        "grant_type": "client_credentials",
+        "client_id": TEAMS_APP_ID,
+        "client_secret": TEAMS_APP_PASSWORD,
+        "scope": "https://api.botframework.com/.default"
+    }
+
+    r = requests.post(url, data=payload)
+    data = r.json()
+
+    if "access_token" not in data:
+        raise Exception(f"Teams token failed: {data}")
+
+    return data["access_token"]
+
 
 # -------------------------------------------------------------------
 # WEB UI UPLOAD
@@ -332,4 +351,4 @@ async def handle_upload(background_tasks: BackgroundTasks, file: UploadFile = Fi
 
 # -------------------------------------------------------------------
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

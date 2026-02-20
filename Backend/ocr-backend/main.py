@@ -12,8 +12,8 @@ from pathlib import Path
 from PIL import Image
 from fastapi import FastAPI, File, UploadFile, Request, BackgroundTasks
 from pydantic import BaseModel
-from paddleocr import PaddleOCR
-import pytesseract
+# from paddleocr import PaddleOCR
+# import pytesseract
 import uvicorn
 import config
 
@@ -41,7 +41,7 @@ VERIFY_TOKEN = config.VERIFY_TOKEN
 # -------------------------------------------------------------------
 # OCR INIT
 # -------------------------------------------------------------------
-_paddle_ocr = PaddleOCR(lang="en", use_textline_orientation=True)
+# _paddle_ocr = PaddleOCR(lang="en", use_textline_orientation=True)
 
 
 # -------------------------------------------------------------------
@@ -67,30 +67,6 @@ def extract_text_from_image(image_path: Path):
 
     pil_img = Image.fromarray(img_rgb).convert("L")
     return pytesseract.image_to_string(pil_img, config="--oem 3 --psm 6")
-
-
-# -------------------------------------------------------------------
-# TEAMS TOKEN
-# -------------------------------------------------------------------
-def get_teams_token():
-    url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-
-    for row in rows:
-        line_canvas = [" "] * max_chars
-        for item in row:
-            char_pos = int(item['x'] / char_step)
-            if char_pos < max_chars:
-                text_val = item['text']
-                for i, char in enumerate(text_val):
-                    if char_pos + i < max_chars:
-                        # Only place character if the space is empty to avoid jumbling
-                        if line_canvas[char_pos + i] == " ":
-                            line_canvas[char_pos + i] = char
-
-        final_output.append("".join(line_canvas).rstrip())
-
-    return "\n".join(final_output)
-
 
 # -------------------------------------------------------------------
 # TEAMS SEND
@@ -265,7 +241,7 @@ async def whatsapp_webhook(req: Request, background_tasks: BackgroundTasks):
 # TEAMS WEBHOOK
 # -------------------------------------------------------------------
 @app.post("/teams/webhook")
-async def teams_webhook(req: Request, background_tasks: BackgroundTasks):
+async def teams_webhook(req: Request):
     try:
         data = await req.json()
         print("Incoming Teams activity:", data)
@@ -277,46 +253,72 @@ async def teams_webhook(req: Request, background_tasks: BackgroundTasks):
         if not attachments:
             return {"status": "no attachment"}
 
-        attachment = attachments[0]
-        content_url = attachment.get("contentUrl")
-
-        if not content_url:
-            return {"status": "no contentUrl"}
-
         service_url = data["serviceUrl"]
         conversation_id = data["conversation"]["id"]
         activity_id = data["id"]
         bot_id = data["recipient"]["id"]
 
-        # 🔹 SEND IMMEDIATE ACKNOWLEDGEMENT (like WhatsApp)
         token = get_teams_token()
+
+        file_streams = []
+
+        for attachment in attachments:
+            content_url = attachment.get("contentUrl")
+            if not content_url:
+                continue
+
+            headers = {"Authorization": f"Bearer {token}"}
+            img_response = requests.get(content_url, headers=headers)
+
+            if img_response.status_code == 200:
+                file_streams.append(img_response.content)
+
+        if not file_streams:
+            send_teams_message(
+                service_url,
+                conversation_id,
+                token,
+                "Could not download attachments.",
+                bot_id,
+                activity_id
+            )
+            return {"status": "failed"}
+
+        teams_user_name = data["from"]["name"]
+
+        result = submit_bills_to_techno(file_streams, teams_user_name)
+
+
+        submission_id = result.get("submissionId")
+
+        upload_message = result.get("message", "File uploaded successfully")
 
         send_teams_message(
             service_url,
             conversation_id,
             token,
-            "📄 Image received! Processing your bill...",
+            f"{upload_message}",
             bot_id,
             activity_id
         )
 
-        # 🔹 Download image
-        headers = {"Authorization": f"Bearer {token}"}
-        img_response = requests.get(content_url, headers=headers, stream=True)
+        if submission_id:
+            import time
+            time.sleep(10)
 
-        background_tasks.add_task(
-            process_image_stream_background,
-            img_response.raw,
-            {
-                "type": "teams",
-                "service_url": service_url,
-                "conversation_id": conversation_id,
-                "bot_id": bot_id,
-                "reply_to_id": activity_id
-            }
-        )
+            summary_result = update_submission_summary(submission_id)
 
-        return {"status": "accepted"}
+            summary_message = summary_result.get("message", "Processing completed.")
+
+            send_teams_message(
+                service_url,
+                conversation_id,
+                token,
+                f"{summary_message}",
+                bot_id,
+                activity_id
+            )
+        return {"status": "success"}
 
     except Exception as e:
         print("Teams webhook error:", e)
@@ -382,6 +384,58 @@ async def send_whatsapp_text(payload: WhatsAppManualSend):
             "status": "error",
             "details": str(e)
         }
+
+def submit_bills_to_techno(file_streams, username):
+    url = f"{config.TECHNO_BASE_URL}/api/files/SubmitBills"
+
+    files = []
+    data = {
+        "CompanyId": config.TECHNO_COMPANY_ID,
+        "UserName": username
+    }
+
+    for i, file_bytes in enumerate(file_streams):
+        files.append(
+            (
+                "Files",
+                (f"bill_{i}.jpg", file_bytes, "application/octet-stream")
+            )
+        )
+
+    headers = {
+        "accept": "*/*"
+    }
+
+    response = requests.post(url, headers=headers, data=data, files=files)
+
+    print("SubmitBills response:", response.status_code, response.text)
+
+    if response.status_code != 200:
+        raise Exception(f"SubmitBills failed: {response.text}")
+
+    return response.json()
+
+def update_submission_summary(submission_id):
+    url = f"{config.TECHNO_BASE_URL}/api/files/UpdateSubmitedBillsSummary"
+
+    params = {
+        "submissionId": submission_id,
+        "token": config.TECHNO_TOKEN
+    }
+
+    headers = {
+        "accept": "*/*"
+    }
+
+    response = requests.post(url, headers=headers, params=params)
+
+    print("UpdateSummary response:", response.status_code, response.text)
+
+    if response.status_code != 200:
+        raise Exception(f"UpdateSummary failed: {response.text}")
+
+    return response.json()
+
 
 
 # -------------------------------------------------------------------

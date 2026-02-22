@@ -242,6 +242,7 @@ async def whatsapp_webhook(req: Request, background_tasks: BackgroundTasks):
 # -------------------------------------------------------------------
 @app.post("/teams/webhook")
 async def teams_webhook(req: Request):
+    data = {}
     try:
         data = await req.json()
         print("Incoming Teams activity:", data)
@@ -259,45 +260,106 @@ async def teams_webhook(req: Request):
         bot_id = data["recipient"]["id"]
 
         token = get_teams_token()
-
         file_streams = []
 
-        for attachment in attachments:
-            content_url = attachment.get("contentUrl")
-            if not content_url:
-                continue
+        for attachment in data.get("attachments", []):
+            content_type = attachment.get("contentType")
+            print("Attachment:", attachment)
 
-            headers = {"Authorization": f"Bearer {token}"}
-            img_response = requests.get(content_url, headers=headers)
+            # Handle images (both pasted and uploaded)
+            if content_type and content_type.startswith("image/"):
+                image_url = attachment.get("contentUrl")
+                if image_url:
+                    headers = {
+                        "Authorization": f"Bearer {token}"
+                    }
 
-            if img_response.status_code == 200:
-                file_streams.append(img_response.content)
+                    response = requests.get(image_url, headers=headers)
+                    print(f"Image download status: {response.status_code}")
+
+                    if response.status_code == 200:
+                        file_streams.append(
+                            ("files", ("image.jpg", response.content, "image/jpeg"))
+                        )
+                    else:
+                        print(f"Failed to download image: {response.text}")
+
+            # Handle file attachments (uploaded via attach button)
+            elif content_type == "application/vnd.microsoft.teams.file.download.info":
+                file_content = attachment.get("content", {})
+                download_url = file_content.get("downloadUrl")
+                file_type = file_content.get("fileType", "jpg")
+                file_name = attachment.get("name", f"attachment.{file_type}")
+
+                if download_url:
+                    # downloadUrl already has tempauth token baked in — no Bearer needed
+                    response = requests.get(download_url)
+                    print(f"File attachment download status: {response.status_code}")
+                    if response.status_code == 200:
+                        mime_type = "image/jpeg" if file_type in ("jpg", "jpeg") else f"image/{file_type}"
+                        file_streams.append(
+                            ("files", (file_name, response.content, mime_type))
+                        )
+                    else:
+                        print(f"Failed to download file attachment: {response.text}")
+
+            # Handle HTML content with embedded images
+            elif content_type == "text/html":
+                html_content = attachment.get("content", "")
+                print("HTML content:", html_content)
+
+                # Extract image URLs from HTML content
+                import re
+                img_urls = re.findall(r'src="([^"]+)"', html_content)
+
+                for img_url in img_urls:
+                    if "asm.skype.com" in img_url or "trafficmanager.net" in img_url:
+                        headers = {
+                            "Authorization": f"Bearer {token}"
+                        }
+
+                        response = requests.get(img_url, headers=headers)
+                        print(f"HTML image download status: {response.status_code}")
+
+                        if response.status_code == 200:
+                            file_streams.append(
+                                ("files", ("html_image.jpg", response.content, "image/jpeg"))
+                            )
+                        else:
+                            print(f"Failed to download HTML image: {response.text}")
 
         if not file_streams:
             send_teams_message(
                 service_url,
                 conversation_id,
                 token,
-                "Could not download attachments.",
+                "❌ Could not process the image attachments. Please try again.",
                 bot_id,
                 activity_id
             )
-            return {"status": "failed"}
+            return {"status": "no_images_processed"}
+
+        # Send acknowledgment
+        send_teams_message(
+            service_url,
+            conversation_id,
+            token,
+            "📄 Image received! Processing your bill...",
+            bot_id,
+            activity_id
+        )
 
         teams_user_name = data["from"]["name"]
-
         result = submit_bills_to_techno(file_streams, teams_user_name)
 
-
         submission_id = result.get("submissionId")
-
         upload_message = result.get("message", "File uploaded successfully")
 
         send_teams_message(
             service_url,
             conversation_id,
             token,
-            f"{upload_message}",
+            f"✅ {upload_message}",
             bot_id,
             activity_id
         )
@@ -307,22 +369,36 @@ async def teams_webhook(req: Request):
             time.sleep(10)
 
             summary_result = update_submission_summary(submission_id)
-
             summary_message = summary_result.get("message", "Processing completed.")
 
             send_teams_message(
                 service_url,
                 conversation_id,
                 token,
-                f"{summary_message}",
+                f"📊 {summary_message}",
                 bot_id,
                 activity_id
             )
+
         return {"status": "success"}
 
     except Exception as e:
         print("Teams webhook error:", e)
+        # Send error message to user
+        try:
+            token = get_teams_token()
+            send_teams_message(
+                data.get("serviceUrl", None),
+                data["conversation"]["id"],
+                token,
+                "❌ Sorry, there was an error processing your image. Please try again.",
+                data["recipient"]["id"],
+                data["id"]
+            )
+        except:
+            pass
         return {"status": "error"}
+
 
 def get_teams_token():
     url = f"https://login.microsoftonline.com/{MICROSOFT_TENANT_ID}/oauth2/v2.0/token"
@@ -388,25 +464,16 @@ async def send_whatsapp_text(payload: WhatsAppManualSend):
 def submit_bills_to_techno(file_streams, username):
     url = f"{config.TECHNO_BASE_URL}/api/files/SubmitBills"
 
-    files = []
     data = {
         "CompanyId": config.TECHNO_COMPANY_ID,
         "UserName": username
     }
 
-    for i, file_bytes in enumerate(file_streams):
-        files.append(
-            (
-                "Files",
-                (f"bill_{i}.jpg", file_bytes, "application/octet-stream")
-            )
-        )
-
     headers = {
         "accept": "*/*"
     }
 
-    response = requests.post(url, headers=headers, data=data, files=files)
+    response = requests.post(url, headers=headers, data=data, files=file_streams)
 
     print("SubmitBills response:", response.status_code, response.text)
 

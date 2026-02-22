@@ -446,6 +446,40 @@ async def send_whatsapp_text(payload: WhatsAppManualSend):
         return {"status": "error", "details": str(e)}
 
 # ---------------------------------------------------------------------------
+# Manual Teams send (POC)
+# ---------------------------------------------------------------------------
+
+class TeamsManualSend(BaseModel):
+    service_url: str
+    conversation_id: str
+    bot_id: str
+    message: str
+    reply_to_id: str = None
+
+
+@app.post("/send-teams-text")
+async def send_teams_text(payload: TeamsManualSend):
+    try:
+        print(f"Manual Teams send: {payload}")
+        token = get_teams_token()
+        send_teams_message(
+            payload.service_url,
+            payload.conversation_id,
+            token,
+            payload.message,
+            payload.bot_id,
+            payload.reply_to_id,
+        )
+        return {
+            "status": "success",
+            "conversation_id": payload.conversation_id,
+            "message": payload.message,
+        }
+    except Exception as e:
+        print(f"Manual Teams send error: {e}")
+        return {"status": "error", "details": str(e)}
+
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8001)

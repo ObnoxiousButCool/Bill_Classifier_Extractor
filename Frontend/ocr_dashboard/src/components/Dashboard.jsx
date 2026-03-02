@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileJson, Eye, RefreshCw } from 'lucide-react';
+import { FileJson, Eye, RefreshCw, ClipboardList } from 'lucide-react';
 import DataModal from './DataModal';
 
 export default function BillDashboard() {
@@ -14,7 +14,7 @@ export default function BillDashboard() {
     const date = new Date(isoString);
     return date.toLocaleString('en-GB', { 
       day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour: '2-digit', minute: '2-digit',
       hour12: true 
     });
   };
@@ -31,10 +31,6 @@ export default function BillDashboard() {
       }
 
       const data = await response.json();
-      console.log("Verified Data Structure:", data);
-
-      // KEY FIX: Backend sends { "bills": [...], "count": X }
-      // We need to access data.bills
       if (data && data.bills) {
         setBills(data.bills);
       } else if (Array.isArray(data)) {
@@ -58,88 +54,108 @@ export default function BillDashboard() {
   };
 
   return (
-    <div className="p-8 bg-gray-50 min-h-screen">
-      <div className="max-w-7xl mx-auto mb-6 flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-slate-800">Bill Processing Dashboard</h1>
-        <button onClick={fetchData} className="flex items-center gap-2 px-4 py-2 bg-white border rounded-lg shadow-sm hover:bg-gray-50 text-sm font-semibold transition">
+    <div className="p-8 bg-[#f4f7fe] min-h-screen font-sans">
+      <div className="max-w-7xl mx-auto mb-8 flex justify-between items-end">
+        <div>
+          <h1 className="text-2xl font-semibold text-[#2d3748]">Document Processing</h1>
+        </div>
+        <button 
+          onClick={fetchData} 
+          className="flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 text-sm font-medium text-gray-700 transition-all"
+        >
           <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
           Refresh Data
         </button>
       </div>
 
-      <div className="max-w-7xl mx-auto bg-white shadow-xl rounded-xl overflow-hidden border border-gray-200">
+      <div className="max-w-7xl mx-auto bg-white shadow-sm rounded-none overflow-hidden border border-gray-100">
         <table className="w-full text-left border-collapse">
-          <thead className="bg-slate-900 text-white">
+          {/* --- Table Header Section --- */}
+          <thead className="bg-[#434d93] text-white">
             <tr>
-              <th className="p-4 text-xs font-bold uppercase tracking-wider">Document ID</th>
-              <th className="p-4 text-xs font-bold uppercase tracking-wider">Created At</th>
-              <th className="p-4 text-xs font-bold uppercase tracking-wider">Type of bill</th>
-              <th className="p-4 text-xs font-bold uppercase tracking-wider text-center">Extracted JSON</th>
-              <th className="p-4 text-xs font-bold uppercase tracking-wider text-center">NetSuite JSON</th>
-              <th className="p-4 text-xs font-bold uppercase tracking-wider text-center">Tally XML</th>
-              <th className="p-4 text-xs font-bold uppercase tracking-wider text-center">Bill Image</th>
+              {/* Increased font to text-sm (14px) and added text-center to all */}
+              <th className="p-5 text-sm font-bold uppercase tracking-wider text-center border-r border-[#545da7]">Document ID</th>
+              <th className="p-5 text-sm font-bold uppercase tracking-wider text-center border-r border-[#545da7]">Created At</th>
+              <th className="p-5 text-sm font-bold uppercase tracking-wider text-center border-r border-[#545da7]">Type of bill</th>
+              <th className="p-5 text-sm font-bold uppercase tracking-wider text-center border-r border-[#545da7]">Extracted JSON</th>
+              <th className="p-5 text-sm font-bold uppercase tracking-wider text-center border-r border-[#545da7]">NetSuite JSON</th>
+              <th className="p-5 text-sm font-bold uppercase tracking-wider text-center border-r border-[#545da7]">Tally XML</th>
+              <th className="p-5 text-sm font-bold uppercase tracking-wider text-center">View</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+
+          {/* --- Table Body Section --- */}
+          <tbody className="divide-y divide-gray-200 bg-white">
             {bills.map((bill) => (
-              <tr key={bill.bill_id} className="hover:bg-slate-50 border-b border-slate-100 transition-colors">
-                <td className="p-4 font-mono text-[10px] text-slate-500">{bill.bill_id}</td>
-                <td className="p-4 text-[12px] text-slate-600 font-medium">{formatDateTime(bill.created_at)}</td>
-                <td className="p-4">
-                  <div className="flex flex-col">
+              <tr key={bill.bill_id} className="hover:bg-slate-50 transition-colors">
+                {/* Centered all <td> content to match the new headers */}
+                <td className="p-5 text-center font-mono text-xs text-slate-500">
+                  {bill.bill_id.slice(0, 8)}...
+                </td>
+                
+                <td className="p-5 text-center text-[13px] text-slate-600 font-medium">
+                  {formatDateTime(bill.created_at)}
+                </td>
+                
+                <td className="p-5 text-center">
+                  <div className="flex flex-col items-center">
                     <span className="text-sm font-semibold text-slate-700">{bill.bill_type}</span>
                     <span className="text-[11px] text-slate-400 italic">{bill.bill_subtype || 'N/A'}</span>
                   </div>
                 </td>
                 
-                {/* Extracted JSON */}
-                <td className="p-4 text-center">
+                {/* Action buttons remain centered as per previous code */}
+                <td className="p-5 text-center">
                   <button 
                     onClick={() => openModal(bill.extracted_json, 'Extracted Data', 'json')}
-                    className="p-2 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100"
+                    className="p-2.5 bg-[#eef2ff] text-[#4f46e5] rounded-lg hover:bg-blue-100 transition-colors"
                   >
-                    <FileJson size={18} />
+                    <FileJson size={20} />
                   </button>
                 </td>
 
-                {/* NetSuite JSON */}
-                <td className="p-4 text-center">
+                <td className="p-5 text-center">
                   <button 
                     onClick={() => openModal(bill.netsuite_json, 'NetSuite Payload', 'json')}
-                    className="p-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100"
+                    className="p-2.5 bg-[#f5f3ff] text-[#7c3aed] rounded-lg hover:bg-indigo-100 transition-colors"
                   >
-                    <FileJson size={18} />
+                    <FileJson size={20} />
                   </button>
                 </td>
 
-                <td className="p-4 text-center">
+                <td className="p-5 text-center">
                   <button 
                     onClick={() => openModal(bill.tally_xml, 'Tally XML Export', 'xml')}
-                    className="p-2 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors"
+                    className="p-2.5 bg-[#ecfdf5] text-[#10b981] rounded-lg hover:bg-emerald-100 transition-colors"
                   >
-                    <ClipboardList size={18} /> {/* Using ClipboardList icon for XML */}
+                    <ClipboardList size={20} />
                   </button>
                 </td>
 
-                {/* Bill Image - LOCAL PATH LOGIC */}
-                <td className="p-4 text-center">
+                <td className="p-5 text-center">
                   <button 
                     onClick={() => {
-                      // Uses the bill_id and looks at your local python server on port 9000
                       const localUrl = `http://localhost:9000/${bill.bill_id}.jpg`;
                       openModal(localUrl, 'Original Bill', 'image');
                     }}
-                    className="p-2 bg-indigo-50 text-indigo-700 rounded-lg border border-indigo-200 hover:bg-indigo-100"
+                    className="p-2 text-[#434d93] hover:scale-110 transition-transform"
                   >
-                    <Eye size={18} />
+                    <Eye size={22} />
                   </button>
                 </td>
               </tr>
-            ))} 
+            ))}
           </tbody>
         </table>
+        
+        {/* Pagination Footer Placeholder to match UI screenshot */}
+        <div className="p-4 border-t border-gray-100 flex justify-end items-center gap-4 bg-white text-sm text-gray-500">
+           <span>Items per page: 10</span>
+           <span>1 - {bills.length} of {bills.length}</span>
+        </div>
+
         {bills.length === 0 && !loading && (
-          <div className="p-20 text-center text-gray-400 italic">No bills found in the database. Ensure the backend is processing files.</div>
+          <div className="p-20 text-center text-gray-400 italic bg-white">No documents found.</div>
         )}
       </div>
 

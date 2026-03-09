@@ -15,6 +15,8 @@ from paddleocr import PaddleOCR
 import pytesseract
 import uvicorn
 import config
+from azure_blob_service import BlobStorageService
+
 
 app = FastAPI()
 
@@ -42,6 +44,13 @@ VERIFY_TOKEN = config.VERIFY_TOKEN
 # -------------------------------------------------------------------
 _paddle_ocr = PaddleOCR(lang="en", use_textline_orientation=True)
 
+# -------------------------------------------------------------------
+# AZURE BLOB INIT
+# -------------------------------------------------------------------
+blob_service = BlobStorageService(
+    config.AZURE_CONNECTION_STRING,
+    config.AZURE_INPUT_CONTAINER
+)
 
 # -------------------------------------------------------------------
 # OCR FUNCTION
@@ -155,6 +164,12 @@ def process_image_stream_background(file_stream, reply_ctx=None):
 
         with img_path.open("wb") as f:
             shutil.copyfileobj(file_stream, f)
+        
+        try:
+            blob_url = blob_service.upload_file(str(img_path))
+            print("✅ Image uploaded to Azure:", blob_url)
+        except Exception as e:
+            print("❌ Azure upload failed:", e)
 
         text = extract_text_from_image(img_path)
 
